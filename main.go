@@ -52,7 +52,7 @@ func main() {
 			// Create a new record
 			record := &core.Record{
 				Collection: "users",
-				Fields: map[string]any{
+				Fields: map[string]interface{}{
 					"name":  name,
 					"email": email,
 				},

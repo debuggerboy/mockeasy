@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 var formTemplate = `
@@ -32,14 +34,23 @@ var formTemplate = `
 func main() {
 	app := pocketbase.New()
 
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		// Ensure "users" collection exists
+	app.OnBeforeServe().Add(func(e *pocketbase.ServeEvent) error {
+		// ensure "users" collection exists
 		collection, err := app.Dao().FindCollectionByNameOrId("users")
 		if err != nil {
-			collection = core.NewBaseCollection("users")
-			collection.Schema = core.Schema{
-				&core.SchemaField{Name: "name", Type: "text"},
-				&core.SchemaField{Name: "email", Type: "email"},
+			collection = &models.Collection{
+				Name: "users",
+				Type: models.CollectionTypeBase,
+				Schema: schema.NewSchema(
+					&schema.SchemaField{
+						Name: "name",
+						Type: schema.FieldTypeText,
+					},
+					&schema.SchemaField{
+						Name: "email",
+						Type: schema.FieldTypeEmail,
+					},
+				),
 			}
 			if err := app.Dao().SaveCollection(collection); err != nil {
 				return err
@@ -47,28 +58,25 @@ func main() {
 			log.Println("Created 'users' collection")
 		}
 
-		// Custom route: GET = show form, POST = save mock data
-		e.Router.AddRoute("/mockdata", func(c http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodGet:
-				tmpl := template.Must(template.New("form").Parse(formTemplate))
-				tmpl.Execute(c, nil)
+		// custom GET/POST route
+		e.Router.GET("/mockdata", func(c *apis.RequestContext) error {
+			tmpl := template.Must(template.New("form").Parse(formTemplate))
+			return tmpl.Execute(c.Response(), nil)
+		})
 
-			case http.MethodPost:
-				name := r.FormValue("name")
-				email := r.FormValue("email")
+		e.Router.POST("/mockdata", func(c *apis.RequestContext) error {
+			name := c.Request().FormValue("name")
+			email := c.Request().FormValue("email")
 
-				record := core.NewRecord(collection)
-				record.Set("name", name)
-				record.Set("email", email)
+			record := models.NewRecord(collection)
+			record.Set("name", name)
+			record.Set("email", email)
 
-				if err := app.Dao().SaveRecord(record); err != nil {
-					http.Error(c, "Failed to save record", http.StatusInternalServerError)
-					return
-				}
-
-				fmt.Fprintf(c, "✅ Mock user added!<br><a href=\"/mockdata\">Add another</a>")
+			if err := app.Dao().SaveRecord(record); err != nil {
+				return c.String(http.StatusInternalServerError, "❌ Failed to save record")
 			}
+
+			return c.String(http.StatusOK, "✅ Mock user added! <a href='/mockdata'>Add another</a>")
 		})
 
 		return nil

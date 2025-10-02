@@ -34,7 +34,7 @@ var formTemplate = `
 func main() {
 	app := pocketbase.New()
 
-	// Create collection on app start
+	// OnBeforeServe hook to create the "users" collection if it doesn't exist
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		_, err := app.Dao().FindCollectionByNameOrId("users")
 		if err != nil {
@@ -64,7 +64,7 @@ func main() {
 		return nil
 	})
 
-	// Serve the form and handle submission
+	// Serve the form and handle submissions
 	http.HandleFunc("/mockdata", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			tmpl := template.Must(template.New("form").Parse(formTemplate))
@@ -82,7 +82,7 @@ func main() {
 				return
 			}
 
-			rec := app.Dao().NewRecord(coll)
+			rec := models.NewRecord(coll) // ← fixed: use models.NewRecord
 			rec.Set("name", name)
 			rec.Set("email", email)
 
@@ -96,7 +96,7 @@ func main() {
 		}
 	})
 
-	// Start PocketBase
+	// Start PocketBase in a goroutine
 	go func() {
 		log.Println("PocketBase starting...")
 		if err := app.Start(); err != nil {

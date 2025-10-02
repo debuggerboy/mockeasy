@@ -8,6 +8,9 @@ import (
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/models/schema"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 var formTemplate = `
@@ -32,17 +35,35 @@ var formTemplate = `
 func main() {
 	app := pocketbase.New()
 
-	// On app start, create "users" collection if it doesn't exist
-	app.OnAfterInit().Add(func(e *core.PocketBaseEvent) error {
+	// Initialize the app
+	if err := app.Init(); err != nil {
+		log.Fatal("Failed to initialize app:", err)
+	}
+
+	// Define the OnBeforeServe hook to create the collection
+	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
+		// Check if the 'users' collection exists
 		_, err := app.Dao().FindCollectionByNameOrId("users")
 		if err != nil {
-			// collection does not exist, create it
-			coll := app.Dao().NewCollection()
-			coll.Name = "users"
-			coll.Type = 1 // base collection
-			coll.Schema.AddTextField("name", true, false)
-			coll.Schema.AddEmailField("email", true, false)
-
+			// Create the 'users' collection if it doesn't exist
+			coll := &models.Collection{
+				Name: "users",
+				Type: models.CollectionTypeBase,
+				Schema: schema.NewSchema(
+					&schema.SchemaField{
+						Name:     "name",
+						Type:     schema.FieldTypeText,
+						Required: true,
+						Unique:   false,
+					},
+					&schema.SchemaField{
+						Name:     "email",
+						Type:     schema.FieldTypeEmail,
+						Required: true,
+						Unique:   true,
+					},
+				),
+			}
 			if err := app.Dao().SaveCollection(coll); err != nil {
 				return fmt.Errorf("failed to create collection: %w", err)
 			}
@@ -63,7 +84,7 @@ func main() {
 			name := r.FormValue("name")
 			email := r.FormValue("email")
 
-			// insert record directly via SDK
+			// Insert record directly via SDK
 			coll, err := app.Dao().FindCollectionByNameOrId("users")
 			if err != nil {
 				http.Error(w, "Collection not found", http.StatusInternalServerError)
@@ -84,13 +105,8 @@ func main() {
 		}
 	})
 
-	go func() {
-		log.Println("Embedded PocketBase starting...")
-		if err := app.Start(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	fmt.Println("Web server running on http://localhost:8080/mockdata")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// Start the app
+	if err := app.Start(); err != nil {
+		log.Fatal("Failed to start app:", err)
+	}
 }
